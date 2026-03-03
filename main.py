@@ -231,6 +231,7 @@ if __name__ == "__main__":
                         obj = extract_object(token)
 
                         result = {
+                            'KWIC': get_kwic(token, window=100),
                             'DepVar': bare_vs_full(token),
                             'HelpPOS': token.tag_,
                             'Voice': get_voice(token),
@@ -241,7 +242,6 @@ if __name__ == "__main__":
                             'ObjectLength': len(obj) if obj else None,
                             'IntervWords': count_intervening(token),
                             'Genre': file.name,
-                            'KWIC': get_kwic(token, window=100)
                         }
                         results.append(result)
                         break
@@ -252,5 +252,5 @@ if __name__ == "__main__":
 
     # Save CSV file
     df = pd.DataFrame(results)
-    df.insert(0, 'Hits', range(1, len(df)+1)) 
+    df.insert(0, 'Hit', range(1, len(df)+1)) # Hit column
     df.to_csv('refactor_test.csv', index=False)
