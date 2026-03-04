@@ -63,9 +63,23 @@ def find_helps(text:str, window: int=200):
         })
 
     return examples
+
+def get_np_tokens(obj_token: Token):
+    """Return tokens of a noun phrase, exluding clausal complements and punctuation"""
+
+    np_tokens = [obj_token]
+
+    for child in obj_token.children:
+        if child.dep_ not in ('ccomp', 'xcomp', 'advcl', 'relcl'):
+
+            # Don't include punctuation (e.g. 'emotionally-disturbed' should not be 3 tokens)
+            non_puncts = [t for t in child.subtree if not t.is_punct]
+            np_tokens.extend(non_puncts)
+
+    return np_tokens
                     
 def extract_object(token: Token):
-    """Attempt to locate the object of HELP and return a list of the all the tokens that make up the object (i.e. the object's subtree). This is useful for counting how long the object is.
+    """Attempt to locate the object of HELP and return a dictionary with the object's POS-tag (PRON or NP) and a list of the all the tokens that make up the object (i.e. the object's subtree). This is useful for counting how long the object is.
 
     Sometimes the object is stored as the nsubj of the complement. E.g. in "I helped the doctor save the patient", "the doctor" is not a dobj of HELP, but a nsubj of the complement. We check for this.
 
@@ -73,24 +87,39 @@ def extract_object(token: Token):
         token: the HELP token.
 
     Returns:
-        Empty list if HELP is not a verb or no object found. Otherwise returns a list of the tokens that make up the object.
+        Dictionary with empty values if no object found. Otherwise, dictionary with list of words making up the object and the object's POS-tag.
     """
+    result = {'words': [], 'tag': None, 'head': None}
     if token.pos_ != "VERB": 
-        return []
+        return result
+    
+    # Search for a complement verb to the right of HELP
+    comp_verb = next((child for child in token.rights if child.dep_ in ('ccomp', 'xcomp')), None)
+    
+    obj = None
 
-    # Check for direct object
+    # Search for direct object
     for child in token.children:
         if child.dep_ == 'dobj':
-            return list(child.subtree)
+            obj = child
+            break # Finish search if we find one
         
-    # Search for object stored as subject of complement
-    for child in token.children:
-        if child.dep_ in ('ccomp', 'xcomp'):
-            for grand_child in child.children:
-                if grand_child.dep_ == 'nsubj':
-                    return list(grand_child.subtree)
+    # Search for object stored as subject of complement clause
+    if not obj and comp_verb:
+            for gc in comp_verb.children:
+
+                # Subject must occur inbetween HELP (token.i) and the complement verb (comp_verb.i)
+                if gc.dep_ == 'nsubj' and token.i < gc.i < comp_verb.i:
+                    obj = gc
+                    result['head'] = comp_verb.lemma_ # TODO: is this the right way of extracting the object's head?
+                    break
                 
-    return []
+    # Process object if found
+    if obj:
+        result['words'] = get_np_tokens(obj)
+        result['tag'] = 'PRO' if obj.pos_ == 'PRON' else 'NP'
+
+    return result
 
 def bare_vs_full(token: Token):
     """Classify an instance of HELP and to or bare infinitive
@@ -121,7 +150,7 @@ def bare_vs_full(token: Token):
     return None
     
 def verb_lemma(token: Token):
-    """Return the lemma of the verb in HELP's complement."""
+    """Return the lemma of the complement clause."""
     if token.pos_ != 'VERB':
         return None 
 
@@ -233,13 +262,16 @@ if __name__ == "__main__":
                         result = {
                             'KWIC': get_kwic(token, window=100),
                             'DepVar': bare_vs_full(token),
-                            'HelpPOS': token.tag_,
+                            'HelpClass': token.pos_,
+                            'HelpInflection': token.tag_,
                             'Voice': get_voice(token),
                             'HorrorAequi': horror_aequi(token),
                             'Polarity': get_polarity(token),
                             'VerbLemma': verb_lemma(token),
-                            'ObjPresent': True if obj else False,
-                            'ObjectLength': len(obj) if obj else None,
+                            'ObjPresent': True if obj['words'] else False,
+                            'ObjTag': obj['tag'],
+                            'ObjLength': len(obj['words']) if obj['words'] else None,
+                            'ObjHead': obj['head'],
                             'IntervWords': count_intervening(token),
                             'Genre': file.name,
                         }
