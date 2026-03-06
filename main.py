@@ -145,7 +145,7 @@ def animacy(subj: Token):
     if subj.ent_type in animate_labels:
         return "Animate"
     
-    if subj.lower_ in {'he', 'she', 'him', 'her', 'who'}:
+    if subj.pos_ == 'PRON' and subj.lower_ != 'it':
         return "Animate"
     
     return "Inanimate"
@@ -235,11 +235,22 @@ def horror_aequi(token: Token):
             return 'NOtoBefore'
     return False
 
-def count_intervening(token: Token):
-    """Count the number words in between HELP and the complement's verb."""
+def count_intervening(token):
+
+    # Loop over tokens to the right of HELP
     for right in token.rights:
+
+        # Search for complement
         if right.dep_ in ('ccomp', 'xcomp'):
+
+            # token.i is always 1 because it is the HELP token, so we must minus 1
             distance = abs(right.i - token.i) - 1
+
+            # Check if there is an intervening 'to'
+            for to in right.children:
+                if to.dep_ == 'aux' and to.lower_ == 'to' and token.i < to.i < right.i:
+                    distance -= 1
+            
             return max(0, distance)
     return 0
 
@@ -279,7 +290,7 @@ if __name__ == "__main__":
 
         # Preprocess and find instances of HELP
         cleaned_text = preprocess(text)
-        examples = find_helps(cleaned_text, window=100)
+        examples = find_helps(cleaned_text, window=50)
 
         # If we find no examples of HELP, skip the file
         if not examples:
