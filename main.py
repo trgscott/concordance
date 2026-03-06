@@ -54,6 +54,7 @@ def find_helps(text:str, window: int=200):
         help_start, help_end = match.span() # Indices of help token
 
         # Define indices of context snippet
+        # TODO: stop at new lines?
         start = max(0, help_start - window)
         end = min(len(text), help_end + window)
 
@@ -156,27 +157,30 @@ def bare_vs_full(token: Token):
     if token.pos_ != 'VERB':
         return None
     
-    try:
-        next_word = token.nbor(1)
-    except IndexError:
-        next_word = None
+    # Get the token after HELP
+    next_token = token.doc[token.i + 1] if token.i + 1 < len(token.doc) else None
     
     for child in token.rights:
-
-        # ING
-        if child == next_word and child.tag_ == 'VBG':
-            return 'ING'
-        # Check for 'that' clause (e.g. 'It helps that she has a car')
-        elif any(c.dep_ == 'mark' and c.lemma_ == 'that' for c in child.children):
-            return None
-        elif child.dep_ in ('ccomp', 'xcomp'):
-            
-            # TO vs. BARE
-            has_to = [child for child in child.children if child.text == 'to']
-            return "TO" if has_to else "BARE"
         
-        elif child.text.lower() == 'in' and child.nbor(1).tag_ == 'VBG':
-            return 'INING'
+        # Check for INING
+        if child.lemma_ == 'in' and child.dep_ == 'prep':
+            if any(c.tag_ == 'VBG' for c in child.children):
+                return "INING"
+        
+        # Check for ING
+        if child == next_token and child.tag_ == 'VBG':
+            return 'ING'
+        
+        # Check for TO and BARE
+        if child.dep_ in ('ccomp', 'xcomp'):
+
+            # Ignore 'that' clauses
+            if any(c.dep_ == 'mark' and c.lemma_ == 'that' for c in child.children):
+                continue
+            
+            # Search for 'to'
+            has_to = any(c.lemma_ == 'to' and c.pos_ == 'PART' for c in child.children)
+            return "TO" if has_to else "BARE"
 
     return None
     
