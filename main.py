@@ -38,7 +38,7 @@ def find_helps(text:str, window: int=200):
         window (int): an integer specifying the chunk size, i.e. the number of characters to the left and right of HELP.
 
     Returns:
-        A list of dictionaries containing the actual text chunk; the indices where help starts and ends in the entire text; the index of where the chunk starts. 
+        A list of dictionaries containing the actual text chunk; the indices where help starts and ends in the entire file; the index of where the chunk starts in the entire file. 
     """
 
     # Pattern finds unhelpful, helpfully, helps, etc
@@ -54,7 +54,7 @@ def find_helps(text:str, window: int=200):
         end = min(len(text), help_end + window)
 
         examples.append({
-            'text': text[start:end],
+            'text': text[start:end], 
             'match_span': (help_start, help_end),
             'context_start': start
         })
@@ -243,25 +243,25 @@ def count_intervening(token: Token):
             return max(0, distance)
     return 0
 
-def get_kwic(token: Token, window: int=100):
-    """Take an instance of HELP and return a concordance line for display. 
+def get_kwic(text, global_start, global_end, before_window, after_window):
+    """Return concordance line for display. This operation is decoupled from the chunk taken for parsing.
     
-    This function is independent from find_helps in order to (1) allow you to dependency parse a smaller chunk of the concordance line, which is quicker; (2) ensure HELP is always in the middle of the concordance line, even if multiple HELPs occur in one of the chunks we extracted.
-
     Args:
-        token: the HELP token.
-        window: an integer specifying the chunk size, i.e. the number of characters to the left and right of HELP.
-    
-    Returns:
-        A concordance line with HELP in the middle surrounded by @ symbols.
+        text (str): The cleaned text.
+        global_start (int): Index of where HELP starts in the cleaned text.
+        global_end (int): Index of where HELP ends in the cleaned text.
+        before_window (int): Size (in characters) of context preceding HELP.
+        after_window (int): Size (in characters) of context following HELP.
     """
-    start = token.idx
-    end = start + len(token.text)
 
-    left_context = token.doc.text[max(0, start - window):start]
-    right_context = token.doc.text[end:end + window]
+    start = max(0, global_start - before_window)
+    end = min(len(text), global_end + after_window)
+    
+    left_context = text[start: global_start]
+    help = text[global_start:global_end]
+    right_context = text[global_end:end]
 
-    return f"{left_context}@{token.text}@{right_context}"
+    return f"{left_context}@{help}@{right_context}"
 
 if __name__ == "__main__":
     # Load spaCy Language object and documentation file 
@@ -294,12 +294,13 @@ if __name__ == "__main__":
 
         # Loop over each chunk containing HELP
         for doc, indices in zip(docs, examples):
+
+            # Start and end indices of HELP in cleaned text
             m_start, m_end = indices['match_span']
 
             for token in doc:
 
-                # DUPLICATE PROTECTION:
-                # Calculate the global start of every index to find the one that matches the target HELP instance 
+                # Get starting index of this token in the cleaned text file
                 token_global_start = token.idx + indices['context_start']
 
                 # If token's global position is the same as the HELP instance we're targetting...
@@ -312,7 +313,7 @@ if __name__ == "__main__":
                         obj = extract_object(token)
 
                         result = {
-                            'KWIC': get_kwic(token, window=100),
+                            'KWIC': get_kwic(cleaned_text, token_global_start, m_end, 240, 480),
                             'DepVar': bare_vs_full(token),
                             'HelpClass': token.pos_,
                             'HelpInflection': token.tag_,
