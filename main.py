@@ -203,8 +203,10 @@ def verb_lemma(token: Token):
 def get_polarity(token: Token):
     """Classify polarity of HELP."""
 
+    neg_words = {'not', "n't", 'nor', 'never', 'hardly', 'scarcely', 'barely', 'no', 'nobody', 'nothing', 'nowhere'}
+
     # Check for 'not only'
-    has_neg = any(c.dep_ == 'neg' for c in token.children)
+    has_neg = any(c.dep_ == 'neg' or c.text in neg_words for c in token.children)
     has_only = any(c.dep_ == 'advmod' and c.lemma_ == 'only' for c in token.children)
 
     if has_neg and has_only:

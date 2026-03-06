@@ -5,9 +5,9 @@ The script (`main.py`) contains a handful of very short and simple functions, fo
 The script is very fast (OldBailey in ~40 seconds) because it does not parse the entire corpus at once. Instead, it finds instances of *help*, takes a chunk of the surrounding text, and only parses that chunk.
 
 ## TODO
-- [ ] Add polarity indicators
 - [ ] Animacy implementation
 - [ ] Preprocessing 
+- [x] Add polarity indicators
 - [x] For negation, can you rule out “not only”? … not only help but also support – POS
 - [x] For ING and INING, try to change the -ing form (deciding) to the infinitive (decide) for the lemma of the head of the non-finite clause.
 - [x] Add ING and INING classification of DepVar
