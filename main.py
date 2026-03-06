@@ -216,7 +216,11 @@ def horror_aequi(token: Token):
     """Return True if TO occurs before HELP, else False."""
     if token.i > 0:
         prev_token = token.doc[token.i - 1]
-        return prev_token.text.lower() == 'to'
+
+        if prev_token.lemma_ == 'to':
+            return 'YEStoBefore'
+        else:
+            return 'NOtoBefore'
     return False
 
 def count_intervening(token: Token):
