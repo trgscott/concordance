@@ -202,9 +202,17 @@ def verb_lemma(token: Token):
         
 def get_polarity(token: Token):
     """Classify polarity of HELP."""
-    if any(child.dep_ == 'neg' for child in token.children):
-        return "NEG"
-    return "POS"
+
+    # Check for 'not only'
+    has_neg = any(c.dep_ == 'neg' for c in token.children)
+    has_only = any(c.dep_ == 'advmod' and c.lemma_ == 'only' for c in token.children)
+
+    if has_neg and has_only:
+        return 'POS'
+    elif has_neg and not has_only:
+        return 'NEG'
+    else:
+        return 'POS'
 
 def get_voice(token: Token):
     """Classify the voice of the HELP instance."""
