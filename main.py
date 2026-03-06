@@ -139,7 +139,7 @@ def extract_subject(token: Token):
                 return result # If pos is None, also code head as None
             result['pos'] = pos
 
-            result['head'] = child.text
+            result['head'] = child.lemma_
             result['animacy'] = animacy(child)
 
     return result
