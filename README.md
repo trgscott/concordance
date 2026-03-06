@@ -8,8 +8,8 @@ The script is very fast (OldBailey in ~40 seconds) because it does not parse the
 - [ ] Add polarity indicators
 - [ ] Animacy implementation
 - [ ] Preprocessing 
-- [ ] For ING and INING, try to change the -ing form (deciding) to the infinitive (decide) for the lemma of the head of the non-finite clause.
 - [ ] For negation, can you rule out “not only”? … not only help but also support – POS
+- [x] For ING and INING, try to change the -ing form (deciding) to the infinitive (decide) for the lemma of the head of the non-finite clause.
 - [x] Add ING and INING classification of DepVar
 - [x] Subject information (subject type, subject head)
 - [x] Metadata variables
