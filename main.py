@@ -90,21 +90,20 @@ def extract_object(token: Token):
     if token.pos_ != "VERB": 
         return result
     
-    # Search for a complement verb to the right of HELP
-    comp_verb = next((child for child in token.rights if child.dep_ in ('ccomp', 'xcomp')), None)
-    
-    obj = None
+    dobj = None
+    comp_verb = None
 
-    # Search for direct object
+    # Search for direct objects and complement verbs in one loop
     for child in token.children:
         if child.dep_ == 'dobj':
-            obj = child
-            break # Finish search if we find one
-        
-    # Search for object stored as subject of complement clause
+            dobj = child
+        elif child.dep_ in {'ccomp', 'xcomp'}:
+            comp_verb = child
+    
+    obj = dobj
     if not obj and comp_verb:
+            # Found a complement verb and did NOT find a direct object
             for gc in comp_verb.children:
-
                 # Subject must occur inbetween HELP (token.i) and the complement verb (comp_verb.i)
                 if gc.dep_ == 'nsubj' and token.i < gc.i < comp_verb.i:
                     obj = gc
