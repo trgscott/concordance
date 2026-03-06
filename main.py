@@ -15,21 +15,16 @@ def get_texts(corpus: str):
     
     return result
 
-def get_metadata(filename:str, documentation):
+def get_metadata(filename:str, documentation: pd.DataFrame):
 
     # Extract FileID and strip the leading zeros
     id = filename.split('_')[0].lstrip('0')
 
     # Extract metadata from documentation file
-    meta = documentation.loc[id]
-
-    # Define meta info we want to extract
-    cols = ['SpeakerID', 'Year', 'TrialDate', 
-            'Gender', 'Age', 'Role', 'SocialClass1', 
-            'SocialClass2', 'OldBaileyFile'
-            ]
-    
-    return meta[cols]
+    return documentation.loc[id, ['SpeakerID', 'Year', 'TrialDate', 
+                                  'Gender', 'Age', 'Role', 'SocialClass1', 
+                                  'SocialClass2', 'OldBaileyFile'
+                                  ]]
 
 def preprocess(text: str):
     text = re.sub(r'[^\x00-\x7F]+', '', text) # Delete weird characters like Äî
@@ -131,7 +126,7 @@ def extract_subject(token: Token):
             
             if child.pos_ == 'NOUN':
                 pos = 'NP'
-            elif child.text.lower() == 'it':
+            elif child.lower_ == 'it':
                 pos = 'IT'
             elif child.pos_ == 'PRON':
                 pos = 'PRO'
@@ -144,9 +139,17 @@ def extract_subject(token: Token):
 
     return result
 
-def animacy(token: Token):
-    # TODO
-    return
+def animacy(subj: Token):
+    
+    animate_labels = {'PERSON'}
+
+    if subj.ent_type in animate_labels:
+        return "Animate"
+    
+    if subj.lower_ in {'he', 'she', 'him', 'her', 'who'}:
+        return "Animate"
+    
+    return "Inanimate"
 
 def bare_vs_full(token: Token):
     """Classify HELP as 'TO' if 'help to VERB'; 'BARE' if 'help VERB'; 'INING' if 'help in VERBing'; 'ING' if 'help VERBing'.
@@ -262,24 +265,16 @@ def get_kwic(token: Token, window: int=100):
     return f"{left_context}@{token.text}@{right_context}"
 
 if __name__ == "__main__":
-
-    ### MAIN LOGIC ###
-
-    # Init output filename and empty list to store results
-    output_file = 'kwic_help.csv'
-    results = []
-
-    # Load spaCy Language object (disabled named-entity recognition to speed things up, but we might need this for animacy)
-    nlp = spacy.load('en_core_web_lg', disable=['ner'])
-
-    # Load documentation file
+    # Load spaCy Language object and documentation file 
+    nlp = spacy.load('en_core_web_lg')
     documentation = pd.read_parquet('OldBailey/Documentation.parquet')
 
+    # Get the files in the corpus
     files = get_texts('OldBailey/Processed files/')
 
     # Loop over files in the corpus directory
+    results = []
     for file in tqdm(files, desc="Processing files", unit='file'):
-
         with open(file, encoding='utf-8') as f:
             text = f.read()
 
@@ -287,23 +282,26 @@ if __name__ == "__main__":
         cleaned_text = preprocess(text)
         examples = find_helps(cleaned_text, window=100)
 
+        # If we find no examples of HELP, skip the file
+        if not examples:
+            continue
+
         # Get metatata
-        if examples:
-            metadata = get_metadata(file.name, documentation)
+        metadata = get_metadata(file.name, documentation)
 
         # Tokenise, POS-tag, dependency parse, etc
         # Using nlp.pipe basically for batch processing - much faster when we get lots of texts
-        docs = list(nlp.pipe([e['text'] for e in examples]))
+        docs = nlp.pipe([e['text'] for e in examples])
 
         # Loop over each chunk containing HELP
-        for doc, meta in zip(docs, examples):
-            m_start, m_end = meta['match_span']
+        for doc, indices in zip(docs, examples):
+            m_start, m_end = indices['match_span']
 
             for token in doc:
 
                 # DUPLICATE PROTECTION:
                 # Calculate the global start of every index to find the one that matches the target HELP instance 
-                token_global_start = token.idx + meta['context_start']
+                token_global_start = token.idx + indices['context_start']
 
                 # If token's global position is the same as the HELP instance we're targetting...
                 if m_start <= token_global_start < m_end:
@@ -345,4 +343,4 @@ if __name__ == "__main__":
     # Save CSV file
     df = pd.DataFrame(results)
     df.insert(0, 'Hit', range(1, len(df)+1)) # Hit column
-    df.to_csv('refactor_test.csv', index=False)
+    df.to_csv('help_concordance.csv', index=False)
