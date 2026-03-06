@@ -5,10 +5,11 @@ The script (`main.py`) contains a handful of very short and simple functions, fo
 The script is very fast because it does not parse the entire corpus at once. Instead, it finds instances of *help*, takes a chunk of the surrounding text, and only parses that chunk. It will do the LOB corpus (1 million words, 15 files) in ~3 seconds, so I would assume it will do 100 million words in ~5 minutes or so.
 
 ## TODO
-- [ ] Subject information (subject type, subject head)
 - [ ] Animacy implementation
-- [ ] Metadata variables
-- [ ] Add ING and INING classification of DepVar
+- [ ] Preprocessing 
+- [x] Add ING and INING classification of DepVar
+- [x] Subject information (subject type, subject head)
+- [x] Metadata variables
 - [x] Object information (pronoun/noun, head of object)
 - [x] Add word class of help (`.pos_`)
 
@@ -17,4 +18,3 @@ If you filter the data by DepVar==BARE and sort in descending order of IntervWor
 
 - Most errors arise when the dependency parsing is incorrect. Could implement fallbacks to improve this?
 - `count_intervening()` is badly affected by incorrect parsing. Also still counts 'to' as an intervening word.
-- The ObjHead variable might be incorrect.

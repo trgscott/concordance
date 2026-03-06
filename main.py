@@ -1,37 +1,38 @@
-import pandas as pd
 import re
 import os
 import spacy
+import pandas as pd
 from spacy.tokens import Token
-import time
+from tqdm import tqdm
 
 def get_texts(corpus: str):
-    """Yield the files in a corpus directory."""
+    """Return a list of the files in a corpus directory."""
+    result = []
     with os.scandir(corpus) as files:
         for f in files:
-            if f.is_file():
-                yield f
+            if f.is_file() and f.name.endswith('.txt'):
+                result.append(f)
+    
+    return result
+
+def get_metadata(filename:str, documentation):
+
+    # Extract FileID and strip the leading zeros
+    id = filename.split('_')[0].lstrip('0')
+
+    # Extract metadata from documentation file
+    meta = documentation.loc[id]
+
+    # Define meta info we want to extract
+    cols = ['SpeakerID', 'Year', 'TrialDate', 
+            'Gender', 'Age', 'Role', 'SocialClass1', 
+            'SocialClass2', 'OldBaileyFile'
+            ]
+    
+    return meta[cols]
 
 def preprocess(text: str):
-    """Preprocess a string (may have to modify this when we switch to XML).
-    
-    Args:
-        text (str): a large string of text from the corpus
-
-    Returns:
-        The preprocessed text.
-    """
-    text = text.replace('^', '')
-    text = text.replace('\n', ' ')
-    text = text.replace("^\n", "")
-    text = text.replace("*+", "£")
-    pattern = r'r\*\<\*\d+'
-    text = re.sub(pattern, "", text)
-    pattern = r'\*\d+'
-    text = re.sub(pattern, "", text)
-    pattern = r'\* \* \[\s*.*?\s*\* \*\]'
-    text = re.sub(pattern, "", text)
-
+    text = re.sub(r'[^\x00-\x7F]+', '', text) # Delete weird characters like Äî
     return text
 
 def find_helps(text:str, window: int=200):
@@ -111,7 +112,7 @@ def extract_object(token: Token):
                 # Subject must occur inbetween HELP (token.i) and the complement verb (comp_verb.i)
                 if gc.dep_ == 'nsubj' and token.i < gc.i < comp_verb.i:
                     obj = gc
-                    result['head'] = comp_verb.lemma_ # TODO: is this the right way of extracting the object's head?
+                    result['head'] = obj.text
                     break
                 
     # Process object if found
@@ -121,32 +122,62 @@ def extract_object(token: Token):
 
     return result
 
+def extract_subject(token: Token):
+    result = {'pos': None, 'head': None, 'animacy': None}
+
+    for child in token.children:
+        if child.dep_ == 'nsubj':
+            
+            if child.pos_ == 'NOUN':
+                pos = 'NP'
+            elif child.text.lower() == 'it':
+                pos = 'IT'
+            elif child.pos_ == 'PRON':
+                pos = 'PRO'
+            else:
+                return result # If pos is None, also code head as None
+            result['pos'] = pos
+
+            result['head'] = child.text
+            result['animacy'] = animacy(child)
+
+    return result
+
+def animacy(token: Token):
+    # TODO
+    return
+
 def bare_vs_full(token: Token):
-    """Classify an instance of HELP and to or bare infinitive
+    """Classify HELP as 'TO' if 'help to VERB'; 'BARE' if 'help VERB'; 'INING' if 'help in VERBing'; 'ING' if 'help VERBing'.
     
     Args:
         token: the HELP token.
-    
-    Returns:
-        "TO" if to-infinitive; "BARE" if bare infinitive; None otherwise.
     """
     if token.pos_ != 'VERB':
         return None
-
-    # Iterate over children that occur to the right of HELP
-    # Doing this because if spaCy's parsing is incorrect, it can sometimes focus on tokens to the left, 
-    # which are not relevant for this variable
+    
+    try:
+        next_word = token.nbor(1)
+    except IndexError:
+        next_word = None
+    
     for child in token.rights:
-        if child.dep_ in ('ccomp', 'xcomp'):
 
-            # Check for 'that' clause (e.g. 'It helps that she has a car')
-            if any(c.dep_ == 'mark' and c.lemma_ == 'that' for c in child.children):
-                continue
+        # ING
+        if child == next_word and child.tag_ == 'VBG':
+            return 'ING'
+        # Check for 'that' clause (e.g. 'It helps that she has a car')
+        elif any(c.dep_ == 'mark' and c.lemma_ == 'that' for c in child.children):
+            return None
+        elif child.dep_ in ('ccomp', 'xcomp'):
             
-            # If we find a TO, classify accordingly
+            # TO vs. BARE
             has_to = [child for child in child.children if child.text == 'to']
             return "TO" if has_to else "BARE"
         
+        elif child.text.lower() == 'in' and child.nbor(1).tag_ == 'VBG':
+            return 'INING'
+
     return None
     
 def verb_lemma(token: Token):
@@ -223,19 +254,24 @@ if __name__ == "__main__":
     # Load spaCy Language object (disabled named-entity recognition to speed things up, but we might need this for animacy)
     nlp = spacy.load('en_core_web_lg', disable=['ner'])
 
-    # Start timer (optional)
-    print("Processing files...")
-    start = time.time()
+    # Load documentation file
+    documentation = pd.read_parquet('OldBailey/Documentation.parquet')
+
+    files = get_texts('OldBailey/Processed files/')
 
     # Loop over files in the corpus directory
-    for file in get_texts('lob_corpus'):
+    for file in tqdm(files, desc="Processing files", unit='file'):
 
-        with open(file) as f:
+        with open(file, encoding='utf-8') as f:
             text = f.read()
 
         # Preprocess and find instances of HELP
         cleaned_text = preprocess(text)
         examples = find_helps(cleaned_text, window=100)
+
+        # Get metatata
+        if examples:
+            metadata = get_metadata(file.name, documentation)
 
         # Tokenise, POS-tag, dependency parse, etc
         # Using nlp.pipe basically for batch processing - much faster when we get lots of texts
@@ -256,7 +292,8 @@ if __name__ == "__main__":
 
                     # Double-check we're on a HELP token for safety
                     if token.lemma_ == 'help':
-
+                        
+                        subj = extract_subject(token)
                         obj = extract_object(token)
 
                         result = {
@@ -268,6 +305,9 @@ if __name__ == "__main__":
                             'HorrorAequi': horror_aequi(token),
                             'Polarity': get_polarity(token),
                             'VerbLemma': verb_lemma(token),
+                            'SubjType': subj['pos'],
+                            'SubjHead': subj['head'],
+                            'SubjAnimacy': subj['animacy'],
                             'ObjPresent': True if obj['words'] else False,
                             'ObjTag': obj['tag'],
                             'ObjLength': len(obj['words']) if obj['words'] else None,
@@ -275,12 +315,14 @@ if __name__ == "__main__":
                             'IntervWords': count_intervening(token),
                             'Genre': file.name,
                         }
+
+                        # Add metadata to dict
+                        result.update(metadata)
+
                         results.append(result)
                         break
     
-    # Print how long the operation took
-    diff = time.time() - start
-    print(f"Processed {len(results)} instances of help in {diff:.2f} seconds")
+    print(f"Processed {len(results)} instances of help")
 
     # Save CSV file
     df = pd.DataFrame(results)
