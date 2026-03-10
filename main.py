@@ -274,7 +274,7 @@ def count_intervening(token):
 
             # Check if there is an intervening 'to'
             for to in right.children:
-                if to.dep_ == 'aux' and to.lower_ == 'to' and token.i < to.i < right.i:
+                if to.dep_ in ('aux', 'part') and to.lower_ == 'to' and token.i < to.i < right.i:
                     distance -= 1
             
             return max(0, distance)
