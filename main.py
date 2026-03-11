@@ -28,6 +28,7 @@ def get_metadata(filename:str, documentation: pd.DataFrame):
 
 def preprocess(text: str):
     text = re.sub(r'[^\x00-\x7F]+', '', text) # Delete weird characters like Äî
+    text = re.sub(r'\n', ' ', text)
     return text
 
 def find_helps(text:str, window: int=200):
@@ -262,23 +263,28 @@ def horror_aequi(token: Token):
     return False
 
 def count_intervening(token):
+    if token.pos_ != 'VERB':
+        return None
 
     # Loop over tokens to the right of HELP
-    for right in token.rights:
+    for comp in token.rights:
 
         # Search for complement
-        if right.dep_ in ('ccomp', 'xcomp'):
+        if comp.dep_ in ('ccomp', 'xcomp') and "VerbForm=Inf" in comp.morph:
 
-            # token.i is always 1 because it is the HELP token, so we must minus 1
-            distance = abs(right.i - token.i) - 1
+            intervening = 0
 
-            # Check if there is an intervening 'to'
-            for to in right.children:
-                if to.dep_ in ('aux', 'part') and to.lower_ == 'to' and token.i < to.i < right.i:
-                    distance -= 1
+            for child in token.children:
+                if token.i < child.i < comp.i:
+                    if child.is_punct:
+                        continue
+                    if child.lower_ in {'to', 'in'}:
+                        continue
+                    intervening += 1
             
-            return max(0, distance)
-    return 0
+            return intervening
+        
+    return None 
 
 def get_kwic(text, global_start, global_end, before_window, after_window):
     """Return concordance line for display. This operation is decoupled from the chunk taken for parsing.
@@ -316,7 +322,7 @@ if __name__ == "__main__":
 
         # Preprocess and find instances of HELP
         cleaned_text = preprocess(text)
-        examples = find_helps(cleaned_text, window=50)
+        examples = find_helps(cleaned_text, window=200)
 
         # If we find no examples of HELP, skip the file
         if not examples:
@@ -350,7 +356,7 @@ if __name__ == "__main__":
                         obj = extract_object(token)
 
                         result = {
-                            'KWIC': get_kwic(cleaned_text, token_global_start, m_end, 240, 480),
+                            'KWIC': get_kwic(cleaned_text, token_global_start, m_end, 100, 100),
                             'DepVar': bare_vs_full(token),
                             'HelpClass': token.pos_,
                             'HelpInflection': token.tag_,
@@ -358,7 +364,6 @@ if __name__ == "__main__":
                             'HorrorAequi': horror_aequi(token),
                             'Polarity': get_polarity(token),
                             'VerbLemma': verb_lemma(token),
-                            'MorphologyOfHelp': {'VBG': '-ing', 'VBD': '-ed', 'VBN': '-ed', 'VBZ': '-s', 'VB': 'base', 'VBP': 'base'}.get(token.tag_, 'base'),
                             'SubjType': subj['pos'],
                             'SubjHead': subj['head'],
                             'SubjAnimacy': subj['animacy'],
@@ -367,7 +372,6 @@ if __name__ == "__main__":
                             'ObjLength': len(obj['words']) if obj['words'] else None,
                             'ObjHead': obj['head'],
                             'IntervWords': count_intervening(token),
-                            'Genre': file.name,
                         }
 
                         # Add metadata to dict
