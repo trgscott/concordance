@@ -28,8 +28,10 @@ def get_metadata(filename:str, documentation: pd.DataFrame):
 
 def preprocess(text: str):
     text = re.sub(r'[^\x00-\x7F]+', '', text) # Delete weird characters like Äî
-    text = re.sub(r'\n', ' ', text)
-    return text
+    text = re.sub(r'\n+', '. ', text) # Remove new lines and join with ". "
+    text = re.sub(r'([?.!,])\.', r'\1', text) # Remove double punctuation e.g. "!."
+    text = re.sub(r' +', ' ', text)
+    return text.strip()
 
 def find_helps(text:str, window: int=200):
     """Search a large string for an occurrence of help, and return the chunk of text containing that occurrence. This chunk will be used for deriving the variables, not for display.
@@ -186,32 +188,6 @@ def bare_vs_full(token: Token):
             return "TO" if has_to else "BARE"
 
     return None
-
-def analyse_morphology_of_help(raw_text: str):
-    from collections import defaultdict
-    text = preprocess(raw_text)
-    examples = find_helps(text)
-    morphology_counts = defaultdict(int)
-    results_morphology = [] 
-
-    for ex in examples:
-        doc = nlp(ex['text'])
-        local_start = ex['match_span'][0] - ex['context_start']
-        local_end = ex['match_span'][1] - ex['context_start']
-
-        for token in doc:
-            if token.idx == local_start:
-                tag_to_bucket = {'VBG': '-ing', 'VBD': '-ed', 'VBN': '-ed', 'VBZ': '-s', 'VB': 'base', 'VBP': 'base'}
-                bucket = tag_to_bucket.get(token.tag_, 'base')
-                morphology_counts[bucket] += 1
-                results_morphology.append({
-                    **ex,
-                    'token': token.text,
-                    'lemma': token.lemma_,
-                    'MorphologyOfHelp': bucket, 
-                })
-                break
-    return results_morphology, dict(morphology_counts)
     
 def verb_lemma(token: Token):
     """Return the lemma of the complement clause."""
@@ -284,7 +260,7 @@ def count_intervening(token):
             
             return intervening
         
-    return None 
+    return 0 
 
 def get_kwic(text, global_start, global_end, before_window, after_window):
     """Return concordance line for display. This operation is decoupled from the chunk taken for parsing.
@@ -372,6 +348,7 @@ if __name__ == "__main__":
                             'ObjLength': len(obj['words']) if obj['words'] else None,
                             'ObjHead': obj['head'],
                             'IntervWords': count_intervening(token),
+                            'Filename': file.name
                         }
 
                         # Add metadata to dict
